@@ -1,7 +1,6 @@
 use diesel::prelude::*;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 
-mod array_type;
 mod schema;
 mod models;
 
@@ -18,13 +17,14 @@ mod test {
     use diesel_migrations::MigrationHarness;
 
     use crate::establish_connection;
+    use crate::models::user::User;
 
     #[rstest]
     #[case(String::from("sqlite://test.db"))]
     #[tokio::test]
     async fn test_jsonb_types(#[case] url: String) {
         use diesel::prelude::*;
-        use crate::schema::test::dsl::*;
+        use crate::models::user::{User, filter::{Filter, Column as FilterColumn}};
 
         use crate::SQLITE_MIGRATIONS;
 
@@ -34,9 +34,12 @@ mod test {
 
         assert_ok!(migration);
 
-        let results = test
-            .select(crate::models::test::Test::as_select())
-            .load(connection);
+        let filter = Filter {
+            value: "Dennis",
+            column: FilterColumn::ContactName,
+        };
+
+        let results = User::execute_filter(connection, &filter);
 
         match results {
             Ok(results) => {
