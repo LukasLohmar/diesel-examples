@@ -1,14 +1,15 @@
-use diesel::{allow_tables_to_appear_in_same_query, joinable};
+use diesel::prelude::*;
 
-diesel::table! {
+table! {
     user (id) {
         id -> Int4,
+        name -> Text,
         contact_id -> Int4,
-        created_by -> Int4,
+        created_by_id -> Int4,
     }
 }
 
-diesel::table! {
+table! {
     contact (id) {
         id -> Int4,
         name -> Text,
@@ -17,7 +18,4 @@ diesel::table! {
 
 joinable!(user -> contact (contact_id));
 
-allow_tables_to_appear_in_same_query!(
-    user,
-    contact,
-);
+allow_tables_to_appear_in_same_query!(user, contact,);
