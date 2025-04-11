@@ -1,10 +1,9 @@
 use crate::models::contact::Contact;
 use crate::models::user::filter::Filter;
 use anyhow::Error;
-use diesel::helper_types::InnerJoinQuerySource;
+use diesel::helper_types::{InnerJoinOn, InnerJoinQuerySource, IntoBoxed};
 use diesel::prelude::*;
 use diesel::query_source::{Alias, AliasedField};
-use diesel::sqlite::Sqlite;
 use diesel::{Queryable, Selectable, dsl};
 
 diesel::alias!(crate::schema::user as self_alias: SelfAlias, crate::schema::contact as contact_alias: ContactAlias, crate::schema::user as created_by_alias: CreatedByAlias);
@@ -29,14 +28,24 @@ type UserFilterSqlite<'a> = Box<
                 Alias<CreatedByAlias>,
                 UserCreatedByJoinConstraint,
             >,
-            Sqlite,
+            diesel::sqlite::Sqlite,
             SqlType = diesel::sql_types::Bool,
         > + 'a,
 >;
 
+type QuerySource<'a> = IntoBoxed<
+    'a,
+        InnerJoinOn<
+            InnerJoinOn<Alias<SelfAlias>, Alias<ContactAlias>, UserContactJoinConstraint>,
+            Alias<CreatedByAlias>,
+            UserCreatedByJoinConstraint,
+        >,
+    diesel::sqlite::Sqlite,
+>;
+
 #[derive(Debug, Selectable, Queryable)]
 #[diesel(table_name = crate::schema::user)]
-#[diesel(check_for_backend(Sqlite))]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct User {
     pub id: i32,
     pub contact_id: i32,
@@ -45,7 +54,7 @@ pub struct User {
 }
 
 impl User {
-    fn filter<'a>(filter: &'a Filter) -> Result<UserFilterSqlite<'a>, Error> {
+    pub(self) fn filter<'a>(filter: &'a Filter) -> Result<UserFilterSqlite<'a>, Error> {
         match filter.column {
             filter::Column::Id => {
                 // filter results by id on user table
@@ -97,10 +106,7 @@ impl User {
         }
     }
 
-    pub fn execute_filter<'a>(
-        connection: &mut SqliteConnection,
-        filter: &'a Filter,
-    ) -> Result<Vec<Self>, Error> {
+    pub(self) fn get_query<'a>() -> QuerySource<'a> {
         let contact_join_constraint = self_alias
             .field(crate::schema::user::contact_id)
             .eq(contact_alias.field(crate::schema::contact::id));
@@ -108,10 +114,17 @@ impl User {
             .field(crate::schema::user::created_by_id)
             .eq(created_by_alias.field(crate::schema::user::id));
 
-        let mut query = self_alias
+        self_alias
             .inner_join(contact_alias.on(contact_join_constraint))
             .inner_join(created_by_alias.on(created_by_join_constraint))
-            .into_boxed();
+            .into_boxed()
+    }
+
+    pub fn execute_filter<'a>(
+        connection: &mut SqliteConnection,
+        filter: &'a Filter,
+    ) -> Result<Vec<Self>, Error> {
+        let mut query = Self::get_query();
 
         let filter = Self::filter(filter)?;
 
